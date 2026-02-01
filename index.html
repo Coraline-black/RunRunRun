@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Бабушка — Runner</title>
+<title>Бабушка — Endless Runner</title>
 
 <style>
 body {
@@ -16,7 +16,7 @@ body {
 canvas {
   display: block;
   margin: auto;
-  background: #333;
+  background: #444;
 }
 
 #ui {
@@ -24,14 +24,15 @@ canvas {
   top: 10px;
   left: 10px;
   color: white;
+  font-size: 16px;
 }
 
-#over {
+#gameover {
   position: absolute;
   inset: 0;
-  display: none;
   background: rgba(0,0,0,0.85);
   color: white;
+  display: none;
   align-items: center;
   justify-content: center;
   flex-direction: column;
@@ -49,45 +50,49 @@ button {
   Дистанция: <span id="dist">0</span>
 </div>
 
-<div id="over">
+<div id="gameover">
   <h1>Game Over</h1>
-  <p>Очки: <span id="final"></span></p>
+  <p>Очки: <span id="finalScore"></span></p>
   <button onclick="restart()">Заново</button>
 </div>
 
 <canvas id="game" width="420" height="640"></canvas>
 
 <script>
-// ====== НАСТРОЙКИ ======
+// ===== CANVAS =====
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
+// ===== ДОРОГА =====
 const lanes = [120, 190, 260];
+
+// ===== СОСТОЯНИЕ ИГРЫ =====
 let speed = 3.5;
 let score = 0;
-let dist = 0;
-let run = true;
+let distance = 0;
+let running = true;
 
-// ====== ЗАГРУЗКА БАБУШКИ ======
+// ===== ЗАГРУЗКА ФОТО БАБУШКИ =====
 const grandma = new Image();
 grandma.src = "grandma.png";
 
-// ====== ИГРОК ======
+// ===== ИГРОК =====
 const player = {
   lane: 1,
   y: 440,
   vy: 0,
   state: "run",
-  w: 60,
-  h: 80
+  width: 60,
+  height: 80
 };
 
+// ===== ОБЪЕКТЫ =====
 let coins = [];
-let obs = [];
+let obstacles = [];
 
-// ====== КЛАВИАТУРА ======
+// ===== УПРАВЛЕНИЕ (ПК) =====
 document.addEventListener("keydown", e => {
-  if (!run) return;
+  if (!running) return;
 
   if ((e.key === "ArrowLeft" || e.key === "a") && player.lane > 0) player.lane--;
   if ((e.key === "ArrowRight" || e.key === "d") && player.lane < 2) player.lane++;
@@ -103,15 +108,17 @@ document.addEventListener("keydown", e => {
   }
 });
 
-// ====== ТАЧ ======
-let sx = 0, sy = 0;
+// ===== УПРАВЛЕНИЕ (ТАЧ) =====
+let startX = 0, startY = 0;
+
 canvas.addEventListener("touchstart", e => {
-  sx = e.touches[0].clientX;
-  sy = e.touches[0].clientY;
+  startX = e.touches[0].clientX;
+  startY = e.touches[0].clientY;
 });
+
 canvas.addEventListener("touchend", e => {
-  let dx = e.changedTouches[0].clientX - sx;
-  let dy = e.changedTouches[0].clientY - sy;
+  let dx = e.changedTouches[0].clientX - startX;
+  let dy = e.changedTouches[0].clientY - startY;
 
   if (Math.abs(dx) > Math.abs(dy)) {
     if (dx > 30 && player.lane < 2) player.lane++;
@@ -128,27 +135,30 @@ canvas.addEventListener("touchend", e => {
   }
 });
 
-// ====== ГЕНЕРАЦИЯ ======
+// ===== ГЕНЕРАЦИЯ =====
 function spawnCoin() {
-  coins.push({ lane: Math.floor(Math.random()*3), y: -20 });
+  coins.push({ lane: Math.floor(Math.random() * 3), y: -20 });
 }
-function spawnObs() {
-  obs.push({
-    lane: Math.floor(Math.random()*3),
+
+function spawnObstacle() {
+  obstacles.push({
+    lane: Math.floor(Math.random() * 3),
     y: -60,
     type: Math.random() > 0.5 ? "low" : "high"
   });
 }
 
-// ====== ЛОГИКА ======
+// ===== ОБНОВЛЕНИЕ =====
 function update() {
-  if (!run) return;
+  if (!running) return;
 
   speed += 0.0005;
-  dist += speed * 0.1;
+  distance += speed * 0.1;
 
+  // прыжок
   player.y += player.vy;
   player.vy += 1;
+
   if (player.y >= 440) {
     player.y = 440;
     player.vy = 0;
@@ -156,40 +166,45 @@ function update() {
   }
 
   coins.forEach(c => c.y += speed);
-  obs.forEach(o => o.y += speed);
+  obstacles.forEach(o => o.y += speed);
 
   coins = coins.filter(c => c.y < 700);
-  obs = obs.filter(o => o.y < 700);
+  obstacles = obstacles.filter(o => o.y < 700);
 
-  coins.forEach((c,i) => {
+  // монеты
+  coins.forEach((c, i) => {
     if (c.lane === player.lane && Math.abs(c.y - player.y) < 30) {
       score++;
-      coins.splice(i,1);
+      coins.splice(i, 1);
     }
   });
 
-  obs.forEach(o => {
+  // столкновения
+  obstacles.forEach(o => {
     if (o.lane === player.lane && Math.abs(o.y - player.y) < 40) {
-      if ((o.type === "low" && player.state !== "jump") ||
-          (o.type === "high" && player.state !== "slide")) {
-        gameOver();
+      if (
+        (o.type === "low" && player.state !== "jump") ||
+        (o.type === "high" && player.state !== "slide")
+      ) {
+        endGame();
       }
     }
   });
 
   if (Math.random() < 0.03) spawnCoin();
-  if (Math.random() < 0.02) spawnObs();
+  if (Math.random() < 0.02) spawnObstacle();
 
   document.getElementById("score").textContent = score;
-  document.getElementById("dist").textContent = Math.floor(dist);
+  document.getElementById("dist").textContent = Math.floor(distance);
 }
 
-// ====== ОТРИСОВКА ======
+// ===== ОТРИСОВКА =====
 function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = "#444";
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+  // фон
+  ctx.fillStyle = "#555";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // бабушка (ГГ)
   let h = player.state === "slide" ? 50 : 80;
@@ -205,34 +220,35 @@ function draw() {
   ctx.fillStyle = "gold";
   coins.forEach(c => {
     ctx.beginPath();
-    ctx.arc(lanes[c.lane]+20, c.y, 10, 0, Math.PI*2);
+    ctx.arc(lanes[c.lane] + 20, c.y, 10, 0, Math.PI * 2);
     ctx.fill();
   });
 
   // препятствия
-  obs.forEach(o => {
+  obstacles.forEach(o => {
     ctx.fillStyle = o.type === "low" ? "#654321" : "#882222";
     ctx.fillRect(lanes[o.lane], o.y, 40, 40);
   });
 }
 
-// ====== GAME OVER ======
-function gameOver() {
-  run = false;
-  document.getElementById("final").textContent = score;
-  document.getElementById("over").style.display = "flex";
+// ===== GAME OVER =====
+function endGame() {
+  running = false;
+  document.getElementById("finalScore").textContent = score;
+  document.getElementById("gameover").style.display = "flex";
 }
+
 function restart() {
   speed = 3.5;
   score = 0;
-  dist = 0;
+  distance = 0;
   coins = [];
-  obs = [];
-  run = true;
-  document.getElementById("over").style.display = "none";
+  obstacles = [];
+  running = true;
+  document.getElementById("gameover").style.display = "none";
 }
 
-// ====== ЦИКЛ ======
+// ===== ЦИКЛ =====
 function loop() {
   update();
   draw();
